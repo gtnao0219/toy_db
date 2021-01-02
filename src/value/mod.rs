@@ -1,4 +1,6 @@
+use std::io;
 use std::io::{Read};
+use std::i32;
 
 use crate::catalog::column::{ColumnType};
 
@@ -22,22 +24,23 @@ impl Value {
       }
     }
   }
-  pub fn deserialize(data: &[u8], column_type: &ColumnType) -> Self {
+  pub fn deserialize(data: &[u8], column_type: &ColumnType) -> io::Result<(Self, usize)> {
     let mut reader = &data[..];
     match column_type {
       ColumnType::Integer => {
         let mut buf = [0u8; 4];
-        reader.read_exact(&mut buf);
+        reader.read_exact(&mut buf)?;
         let v = i32::from_be_bytes(buf);
-        Value::Integer(v)
+        Ok((Value::Integer(v), 4))
       }
       ColumnType::Varchar => {
         let mut buf = [0u8; 4];
-        reader.read_exact(&mut buf);
+        reader.read_exact(&mut buf)?;
         let size = u32::from_be_bytes(buf) as usize;
         let mut str_buf = vec![0u8; size];
-        reader.read_exact(&mut str_buf);
-        Value::Varchar(String::from_utf8(str_buf).unwrap())
+        reader.read_exact(&mut str_buf)?;
+        // TODO: remove unwrap
+        Ok((Value::Varchar(String::from_utf8(str_buf).unwrap()), 4usize + size))
       }
     }
   }
@@ -45,29 +48,75 @@ impl Value {
 
 #[cfg(test)]
 mod tests {
+  use std::i32;
   use crate::value::{Value};
   use crate::catalog::column::{ColumnType};
   #[test]
-  fn serialize() {
+  fn serialize_integer_zero() {
     assert_eq!(
       Value::Integer(0).serialize(),
       vec![
-        0,0,0,0,0,0,0,0
+        0, 0, 0, 0
       ]
     );
   }
   #[test]
-  fn deseriallize_integer() {
+  fn serialize_integer_min() {
     assert_eq!(
-      Value::deserialize(&[0,0,0,0,0,0,0,0], &ColumnType::Integer),
-      Value::Integer(0)
+      Value::Integer(i32::MIN).serialize(),
+      vec![
+        128, 0, 0, 0
+      ]
+    );
+  }
+  #[test]
+  fn serialize_integer_max() {
+    assert_eq!(
+      Value::Integer(i32::MAX).serialize(),
+      vec![
+        127, 255, 255, 255
+      ]
+    );
+  }
+  #[test]
+  fn serialize_varchar_jp() {
+    assert_eq!(
+      Value::Varchar("あいうえお".to_string()).serialize(),
+      vec![
+        0, 0, 0, 15, 227, 129, 130, 227, 129, 132, 227, 129, 134, 227, 129, 136, 227, 129, 138
+      ]
     )
   }
-  // #[test]
-  // fn deseriallize_varchar() {
-  //   assert_eq!(
-  //     Value::deserialize(&[0,0,0,0,0,0,0,0], &ColumnType::Varchar),
-  //     Value::Varchar("foo")
-  //   )
-  // }
+  #[test]
+  fn deseriallize_integer_zero() {
+    let value = Value::deserialize(&[0, 0, 0, 0], &ColumnType::Integer).unwrap();
+    assert_eq!(
+      value,
+      (Value::Integer(0), 4)
+    )
+  }
+  #[test]
+  fn deseriallize_integer_min() {
+    let value = Value::deserialize(&[128, 0, 0, 0], &ColumnType::Integer).unwrap();
+    assert_eq!(
+      value,
+      (Value::Integer(i32::MIN), 4)
+    )
+  }
+  #[test]
+  fn deseriallize_integer_max() {
+    let value = Value::deserialize(&[127, 255, 255, 255], &ColumnType::Integer).unwrap();
+    assert_eq!(
+      value,
+      (Value::Integer(i32::MAX), 4)
+    )
+  }
+  #[test]
+  fn deserialize_varchar_jp() {
+    let value = Value::deserialize(&[0, 0, 0, 15, 227, 129, 130, 227, 129, 132, 227, 129, 134, 227, 129, 136, 227, 129, 138], &ColumnType::Varchar).unwrap();
+    assert_eq!(
+      value,
+      (Value::Varchar("あいうえお".to_string()), 19)
+    )
+  }
 }
