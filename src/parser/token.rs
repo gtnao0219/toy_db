@@ -1,11 +1,12 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
+use crate::value::Value;
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash, Eq, Ord)]
 pub enum Token {
   Ident(String),
-  Integer(i64),
-  String(String),
+  Lit(Value),
   Asterisk,
   Semicolon,
   Comma,
@@ -81,7 +82,7 @@ pub fn tokenize(iter: &mut Peekable<Chars>) -> Result<Vec<Token>, String> {
           }
         }
         if let Ok(v) = ret.parse() {
-          tokens.push(Token::Integer(v));
+          tokens.push(Token::Lit(Value::Integer(v)));
         } else {
           return Err(format!("failed convert: {}", ret));
         }
@@ -115,7 +116,7 @@ pub fn tokenize(iter: &mut Peekable<Chars>) -> Result<Vec<Token>, String> {
             }
           }
         }
-        tokens.push(Token::String(ret));
+        tokens.push(Token::Lit(Value::Varchar(ret)));
       }
       Some(c) => {
         return Err(format!("invalid token: {}", c))
@@ -133,6 +134,7 @@ pub fn tokenize(iter: &mut Peekable<Chars>) -> Result<Vec<Token>, String> {
 #[cfg(test)]
 mod tests {
   use crate::parser::token::{tokenize, Token};
+  use crate::value::Value;
   #[test]
   fn select_query() {
     let sql = "
@@ -187,8 +189,8 @@ mod tests {
         Token::KeywordInsert, Token::KeywordInto, Token::Ident("users".to_string()),
         Token::KeywordValues,
         Token::LeftParen,
-        Token::Integer(1), Token::Comma,
-        Token::String("foo".to_string()),
+        Token::Lit(Value::Integer(1)), Token::Comma,
+        Token::Lit(Value::Varchar("foo".to_string())),
         Token::RightParen,
         Token::Semicolon, Token::EOF,
       ])
