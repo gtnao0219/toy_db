@@ -1,6 +1,8 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
+use anyhow;
+
 use crate::value::Value;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
@@ -24,7 +26,7 @@ pub enum Token {
     EOF,
 }
 
-pub fn tokenize(iter: &mut Peekable<Chars>) -> Result<Vec<Token>, String> {
+pub fn tokenize(iter: &mut Peekable<Chars>) -> anyhow::Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
     loop {
         match iter.peek() {

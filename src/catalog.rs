@@ -1,6 +1,7 @@
 use std::cmp;
-use std::io;
 use std::sync::{Arc, Mutex};
+
+use anyhow;
 
 use crate::disk::DiskManager;
 use crate::storage::table::Table;
@@ -40,7 +41,7 @@ impl Catalog {
             oid_counter: Arc::new(Mutex::new(0)),
         }
     }
-    pub fn create_table(&self, table_name: &String, schema: &Schema) -> io::Result<()> {
+    pub fn create_table(&self, table_name: &String, schema: &Schema) -> anyhow::Result<()> {
         let table = Table::create(&self.disk_manager, schema)?;
         let new_oid: usize;
         {
@@ -85,7 +86,7 @@ impl Catalog {
         }
         Ok(())
     }
-    pub fn get_schema(&self, table_name: &String) -> io::Result<Option<Schema>> {
+    pub fn get_schema(&self, table_name: &String) -> anyhow::Result<Option<Schema>> {
         match self.get_oid(table_name)? {
             Some(oid) => {
                 let table = Table::new(
@@ -119,7 +120,7 @@ impl Catalog {
             None => Ok(None),
         }
     }
-    pub fn get_first_block_number(&self, table_name: &String) -> io::Result<Option<usize>> {
+    pub fn get_first_block_number(&self, table_name: &String) -> anyhow::Result<Option<usize>> {
         match self.get_oid(table_name)? {
             Some(oid) => {
                 let table = Table::new(&self.disk_manager, &self.catalog_schema_map.header, 0);
@@ -139,7 +140,7 @@ impl Catalog {
             None => Ok(None),
         }
     }
-    pub fn get_oid(&self, table_name: &String) -> io::Result<Option<usize>> {
+    pub fn get_oid(&self, table_name: &String) -> anyhow::Result<Option<usize>> {
         let table = Table::new(
             &self.disk_manager,
             &self.catalog_schema_map.catalog_table,
@@ -158,7 +159,7 @@ impl Catalog {
         }
         Ok(None)
     }
-    pub fn initialize(&self) -> io::Result<()> {
+    pub fn initialize(&self) -> anyhow::Result<()> {
         let header_table = Table::create(&self.disk_manager, &self.catalog_schema_map.header)?;
         header_table.insert_tuple(Tuple {
             values: vec![Value::Int(0), Value::Int(1)],

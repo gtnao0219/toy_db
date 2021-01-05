@@ -1,5 +1,6 @@
-use std::io;
 use std::sync::Arc;
+
+use anyhow;
 
 use crate::catalog::{Catalog, Column, Schema};
 use crate::disk::DiskManager;
@@ -8,7 +9,7 @@ use crate::storage::table::Table;
 use crate::storage::tuple::Tuple;
 
 pub trait Executor {
-    fn execute(&self) -> io::Result<String>;
+    fn execute(&self) -> anyhow::Result<String>;
 }
 
 #[derive(Debug)]
@@ -18,7 +19,7 @@ pub struct CreateTableExecutor {
 }
 
 impl Executor for CreateTableExecutor {
-    fn execute(&self) -> io::Result<String> {
+    fn execute(&self) -> anyhow::Result<String> {
         if let Stmt::CreateTableStmt(ast) = &self.stmt {
             self.catalog.create_table(
                 &ast.table_name,
@@ -46,7 +47,7 @@ pub struct InsertExecutor {
 }
 
 impl Executor for InsertExecutor {
-    fn execute(&self) -> io::Result<String> {
+    fn execute(&self) -> anyhow::Result<String> {
         if let Stmt::InsertStmt(ast) = &self.stmt {
             // TODO: remove unwrap
             let schema = self.catalog.get_schema(&ast.table_name)?.unwrap();
@@ -71,7 +72,7 @@ pub struct SelectExecutor {
 }
 
 impl Executor for SelectExecutor {
-    fn execute(&self) -> io::Result<String> {
+    fn execute(&self) -> anyhow::Result<String> {
         let mut res = String::new();
         if let Stmt::SelectStmt(ast) = &self.stmt {
             // TODO: remove unwrap

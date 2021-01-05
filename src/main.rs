@@ -1,12 +1,13 @@
 extern crate toy_db;
 
 use std::env;
-use std::io;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process;
 use std::sync::Arc;
 use std::thread;
+
+use anyhow;
 
 use toy_db::catalog::Catalog;
 use toy_db::disk::DiskManager;
@@ -14,7 +15,7 @@ use toy_db::execution::{CreateTableExecutor, Executor, InsertExecutor, SelectExe
 use toy_db::parser::token;
 use toy_db::parser::{Parser, Stmt};
 
-fn main() -> io::Result<()> {
+fn main() -> anyhow::Result<()> {
     let args: Vec<String> = env::args().collect();
     let disk_manager_arc = Arc::new(DiskManager::new("data/".to_string()));
     let catalog_arc = Arc::new(Catalog::new(disk_manager_arc.clone()));
@@ -52,7 +53,7 @@ fn handle(
     mut stream: TcpStream,
     catalog: Arc<Catalog>,
     disk_manager: Arc<DiskManager>,
-) -> io::Result<()> {
+) -> anyhow::Result<()> {
     let mut buf = String::new();
     stream.read_to_string(&mut buf)?;
     let tokens = match token::tokenize(&mut buf.chars().peekable()) {

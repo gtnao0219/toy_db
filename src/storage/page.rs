@@ -1,6 +1,8 @@
 use std::io;
 use std::io::{Seek, Write};
 
+use anyhow;
+
 use super::tuple::Tuple;
 use crate::catalog::Schema;
 
@@ -46,7 +48,7 @@ impl TablePage {
             tuples: Vec::new(),
         }
     }
-    pub fn serialize(&self) -> io::Result<Vec<u8>> {
+    pub fn serialize(&self) -> anyhow::Result<Vec<u8>> {
         let mut cur = io::Cursor::new(vec![0u8; TABLE_PAGE_SIZE]);
         cur.seek(io::SeekFrom::Start(0))?;
         cur.write(&self.header.next_block_number.to_be_bytes())?;
@@ -64,7 +66,7 @@ impl TablePage {
         }
         Ok(cur.into_inner())
     }
-    pub fn deserialize(data: &[u8], schema: &Schema) -> io::Result<TablePage> {
+    pub fn deserialize(data: &[u8], schema: &Schema) -> anyhow::Result<TablePage> {
         let mut next_block_number_buf = [0u8; 4];
         next_block_number_buf.clone_from_slice(&data[0..4]);
         let next_block_number = i32::from_be_bytes(next_block_number_buf);
@@ -110,7 +112,7 @@ impl TablePage {
         })
     }
 
-    pub fn insert_tuple(&mut self, tuple: &Tuple) -> io::Result<bool> {
+    pub fn insert_tuple(&mut self, tuple: &Tuple) -> anyhow::Result<bool> {
         let b = tuple.serialize()?;
         let tuple_size = b.len();
         // println!("{:?}", &self);

@@ -1,7 +1,8 @@
 use std::fmt;
 use std::i32;
-use std::io;
 use std::io::Read;
+
+use anyhow;
 
 use crate::catalog::ColumnType;
 
@@ -23,7 +24,7 @@ impl Value {
             }
         }
     }
-    pub fn deserialize(data: &[u8], column_type: &ColumnType) -> io::Result<(Self, usize)> {
+    pub fn deserialize(data: &[u8], column_type: &ColumnType) -> anyhow::Result<(Self, usize)> {
         let mut reader = &data[..];
         match column_type {
             ColumnType::Int => {
