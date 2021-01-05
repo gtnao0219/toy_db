@@ -1,7 +1,7 @@
 use std::io;
 use std::io::{Seek, Write};
 
-use anyhow;
+use anyhow::Result;
 
 use super::tuple::Tuple;
 use crate::catalog::Schema;
@@ -48,25 +48,25 @@ impl TablePage {
             tuples: Vec::new(),
         }
     }
-    pub fn serialize(&self) -> anyhow::Result<Vec<u8>> {
+    pub fn serialize(&self) -> Result<Vec<u8>> {
         let mut cur = io::Cursor::new(vec![0u8; TABLE_PAGE_SIZE]);
         cur.seek(io::SeekFrom::Start(0))?;
-        cur.write(&self.header.next_block_number.to_be_bytes())?;
-        cur.write(&self.header.lower_offset.to_be_bytes())?;
-        cur.write(&self.header.upper_offset.to_be_bytes())?;
+        cur.write_all(&self.header.next_block_number.to_be_bytes())?;
+        cur.write_all(&self.header.lower_offset.to_be_bytes())?;
+        cur.write_all(&self.header.upper_offset.to_be_bytes())?;
         for (i, line_pointer) in self.line_pointers.iter().enumerate() {
             cur.seek(io::SeekFrom::Start(
                 (TABLE_PAGE_HEADER_SIZE + i * TABLE_PAGE_LINE_POINTER_SIZE) as u64,
             ))?;
-            cur.write(&line_pointer.offset.to_be_bytes())?;
-            cur.write(&line_pointer.size.to_be_bytes())?;
+            cur.write_all(&line_pointer.offset.to_be_bytes())?;
+            cur.write_all(&line_pointer.size.to_be_bytes())?;
             cur.seek(io::SeekFrom::Start(line_pointer.offset as u64))?;
             let tuple_data = self.tuples[i].serialize()?;
-            cur.write(&tuple_data)?;
+            cur.write_all(&tuple_data)?;
         }
         Ok(cur.into_inner())
     }
-    pub fn deserialize(data: &[u8], schema: &Schema) -> anyhow::Result<TablePage> {
+    pub fn deserialize(data: &[u8], schema: &Schema) -> Result<TablePage> {
         let mut next_block_number_buf = [0u8; 4];
         next_block_number_buf.clone_from_slice(&data[0..4]);
         let next_block_number = i32::from_be_bytes(next_block_number_buf);
@@ -90,10 +90,7 @@ impl TablePage {
             let mut size_buf = [0u8; 2];
             size_buf.clone_from_slice(&line_pointer_data[2..4]);
             let size = u16::from_be_bytes(size_buf);
-            line_pointers.push(TablePageLinePointer {
-                offset: offset,
-                size: size,
-            });
+            line_pointers.push(TablePageLinePointer { offset, size });
 
             let tuple_start = offset as usize;
             let tuple_end = (offset + size) as usize;
@@ -103,16 +100,16 @@ impl TablePage {
         }
         Ok(TablePage {
             header: TablePageHeader {
-                next_block_number: next_block_number,
-                lower_offset: lower_offset,
-                upper_offset: upper_offset,
+                next_block_number,
+                lower_offset,
+                upper_offset,
             },
-            line_pointers: line_pointers,
-            tuples: tuples,
+            line_pointers,
+            tuples,
         })
     }
 
-    pub fn insert_tuple(&mut self, tuple: &Tuple) -> anyhow::Result<bool> {
+    pub fn insert_tuple(&mut self, tuple: &Tuple) -> Result<bool> {
         let b = tuple.serialize()?;
         let tuple_size = b.len();
         // println!("{:?}", &self);
@@ -129,6 +126,12 @@ impl TablePage {
         });
         self.tuples.push(tuple.clone());
         Ok(true)
+    }
+}
+
+impl Default for TablePage {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -7,7 +7,7 @@ use std::process;
 use std::sync::Arc;
 use std::thread;
 
-use anyhow;
+use anyhow::Result;
 
 use toy_db::catalog::Catalog;
 use toy_db::disk::DiskManager;
@@ -15,13 +15,13 @@ use toy_db::execution::{CreateTableExecutor, Executor, InsertExecutor, SelectExe
 use toy_db::parser::token;
 use toy_db::parser::{Parser, Stmt};
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     let disk_manager_arc = Arc::new(DiskManager::new("data/".to_string()));
     let catalog_arc = Arc::new(Catalog::new(disk_manager_arc.clone()));
     match &*args[1] {
         "init" => {
-            catalog_arc.clone().initialize()?;
+            catalog_arc.initialize()?;
             return Ok(());
         }
         "start" => {
@@ -53,7 +53,7 @@ fn handle(
     mut stream: TcpStream,
     catalog: Arc<Catalog>,
     disk_manager: Arc<DiskManager>,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let mut buf = String::new();
     stream.read_to_string(&mut buf)?;
     let tokens = match token::tokenize(&mut buf.chars().peekable()) {
@@ -75,25 +75,21 @@ fn handle(
     println!("ast is {:?}", ast);
 
     let result = match ast {
-        Stmt::CreateTableStmt(_) => CreateTableExecutor {
-            stmt: ast,
-            catalog: catalog,
-        }
-        .execute()?,
+        Stmt::CreateTableStmt(_) => CreateTableExecutor { stmt: ast, catalog }.execute()?,
         Stmt::InsertStmt(_) => InsertExecutor {
             stmt: ast,
-            catalog: catalog,
-            disk_manager: disk_manager,
+            catalog,
+            disk_manager,
         }
         .execute()?,
         Stmt::SelectStmt(_) => SelectExecutor {
             stmt: ast,
-            catalog: catalog,
-            disk_manager: disk_manager,
+            catalog,
+            disk_manager,
         }
         .execute()?,
     };
-    stream.write(result.as_bytes())?;
+    stream.write_all(result.as_bytes())?;
     stream.flush()?;
     Ok(())
 }

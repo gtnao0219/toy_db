@@ -1,20 +1,20 @@
 pub mod ast;
 pub mod token;
 
-use anyhow;
+use anyhow::Result;
 
 use self::token::Token;
 use crate::catalog::ColumnType;
 use crate::value::Value;
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Hash, Eq, Ord)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub enum Stmt {
     CreateTableStmt(ast::CreateTableStmtAst),
     InsertStmt(ast::InsertStmtAst),
     SelectStmt(ast::SelectStmtAst),
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Hash, Default, Eq, Ord)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
@@ -23,14 +23,14 @@ pub struct Parser {
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Parser {
         Parser {
-            tokens: tokens,
+            tokens,
             position: 0,
         }
     }
     fn reset_position(&mut self) {
         self.position = 0;
     }
-    fn consume_or_err(&mut self, token: Token) -> anyhow::Result<(), String> {
+    fn consume_or_err(&mut self, token: Token) -> Result<(), String> {
         if token == self.tokens[self.position] {
             self.position += 1;
             Ok(())
@@ -46,48 +46,48 @@ impl Parser {
             false
         }
     }
-    fn consume_ident_or_err(&mut self) -> anyhow::Result<String, String> {
+    fn consume_ident_or_err(&mut self) -> Result<String, String> {
         if let Token::Ident(v) = &self.tokens[self.position] {
             self.position += 1;
             Ok(v.clone())
         } else {
-            Err(format!("expected identifier"))
+            Err("expected identifier".to_string())
         }
     }
-    fn consume_lit_or_err(&mut self) -> anyhow::Result<Value, String> {
+    fn consume_lit_or_err(&mut self) -> Result<Value, String> {
         if let Token::Lit(v) = &self.tokens[self.position] {
             self.position += 1;
             Ok(v.clone())
         } else {
-            Err(format!("expected value"))
+            Err("expected value".to_string())
         }
     }
-    pub fn parse(&mut self) -> anyhow::Result<Stmt, String> {
+    pub fn parse(&mut self) -> Result<Stmt, String> {
         self.stmt()
     }
-    fn stmt(&mut self) -> anyhow::Result<Stmt, String> {
+    fn stmt(&mut self) -> Result<Stmt, String> {
         if let Ok(ast) = self.create_table_stmt() {
-            return Ok(Stmt::CreateTableStmt(ast));
+            Ok(Stmt::CreateTableStmt(ast))
         } else if let Ok(ast) = self.insert_stmt() {
-            return Ok(Stmt::InsertStmt(ast));
+            Ok(Stmt::InsertStmt(ast))
         } else if let Ok(ast) = self.select_stmt() {
-            return Ok(Stmt::SelectStmt(ast));
+            Ok(Stmt::SelectStmt(ast))
         } else {
-            Err(format!("invalid query"))
+            Err("invalid query".to_string())
         }
     }
-    fn create_table_stmt(&mut self) -> anyhow::Result<ast::CreateTableStmtAst, String> {
+    fn create_table_stmt(&mut self) -> Result<ast::CreateTableStmtAst, String> {
         self.reset_position();
         self.consume_or_err(Token::KeywordCreate)?;
         self.consume_or_err(Token::KeywordTable)?;
         let table_name = self.consume_ident_or_err()?;
         let table_element_list = self.table_element_list()?;
         Ok(ast::CreateTableStmtAst {
-            table_name: table_name,
-            table_element_list: table_element_list,
+            table_name,
+            table_element_list,
         })
     }
-    fn table_element_list(&mut self) -> anyhow::Result<Vec<ast::TableElementAst>, String> {
+    fn table_element_list(&mut self) -> Result<Vec<ast::TableElementAst>, String> {
         self.consume_or_err(Token::LeftParen)?;
         let mut ret: Vec<ast::TableElementAst> = Vec::new();
         let table_element = self.table_element()?;
@@ -103,34 +103,31 @@ impl Parser {
         self.consume_or_err(Token::RightParen)?;
         Ok(ret)
     }
-    fn table_element(&mut self) -> anyhow::Result<ast::TableElementAst, String> {
+    fn table_element(&mut self) -> Result<ast::TableElementAst, String> {
         let column_name = self.consume_ident_or_err()?;
         if self.consume(Token::KeywordInt) {
             Ok(ast::TableElementAst {
-                column_name: column_name,
+                column_name,
                 column_type: ColumnType::Int,
             })
         } else if self.consume(Token::KeywordVarchar) {
             Ok(ast::TableElementAst {
-                column_name: column_name,
+                column_name,
                 column_type: ColumnType::Varchar,
             })
         } else {
-            Err(format!("invalid column type"))
+            Err("invalid column type".to_string())
         }
     }
-    fn insert_stmt(&mut self) -> anyhow::Result<ast::InsertStmtAst, String> {
+    fn insert_stmt(&mut self) -> Result<ast::InsertStmtAst, String> {
         self.reset_position();
         self.consume_or_err(Token::KeywordInsert)?;
         self.consume_or_err(Token::KeywordInto)?;
         let table_name = self.consume_ident_or_err()?;
         let values = self.table_value_constructor()?;
-        Ok(ast::InsertStmtAst {
-            table_name: table_name,
-            values: values,
-        })
+        Ok(ast::InsertStmtAst { table_name, values })
     }
-    fn table_value_constructor(&mut self) -> anyhow::Result<Vec<Value>, String> {
+    fn table_value_constructor(&mut self) -> Result<Vec<Value>, String> {
         self.consume_or_err(Token::KeywordValues)?;
         self.consume_or_err(Token::LeftParen)?;
         let mut ret: Vec<Value> = Vec::new();
@@ -147,15 +144,13 @@ impl Parser {
         self.consume_or_err(Token::RightParen)?;
         Ok(ret)
     }
-    fn select_stmt(&mut self) -> anyhow::Result<ast::SelectStmtAst, String> {
+    fn select_stmt(&mut self) -> Result<ast::SelectStmtAst, String> {
         self.reset_position();
         self.consume_or_err(Token::KeywordSelect)?;
         self.consume_or_err(Token::Asterisk)?;
         self.consume_or_err(Token::KeywordFrom)?;
         let table_name = self.consume_ident_or_err()?;
-        Ok(ast::SelectStmtAst {
-            table_name: table_name,
-        })
+        Ok(ast::SelectStmtAst { table_name })
     }
 }
 

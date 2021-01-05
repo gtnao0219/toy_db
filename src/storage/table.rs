@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow;
+use anyhow::Result;
 
 use super::page::TablePage;
 use super::tuple::Tuple;
@@ -22,22 +22,22 @@ impl<'a> Table<'a> {
         first_block_number: usize,
     ) -> Self {
         Table {
-            disk_manager: disk_manager,
-            schema: schema,
-            first_block_number: first_block_number,
+            disk_manager,
+            schema,
+            first_block_number,
             current_block_number: first_block_number as i32,
         }
     }
-    pub fn create(disk_manager: &'a Arc<DiskManager>, schema: &'a Schema) -> anyhow::Result<Self> {
+    pub fn create(disk_manager: &'a Arc<DiskManager>, schema: &'a Schema) -> Result<Self> {
         let first_block_number = disk_manager.write_new_page(&TablePage::new().serialize()?)?;
         Ok(Table {
-            disk_manager: disk_manager,
-            schema: schema,
-            first_block_number: first_block_number,
+            disk_manager,
+            schema,
+            first_block_number,
             current_block_number: first_block_number as i32,
         })
     }
-    pub fn insert_tuple(&self, tuple: Tuple) -> anyhow::Result<()> {
+    pub fn insert_tuple(&self, tuple: Tuple) -> Result<()> {
         let mut block_number = self.first_block_number;
         loop {
             let mut page =

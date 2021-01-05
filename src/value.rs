@@ -1,8 +1,9 @@
 use std::fmt;
 use std::i32;
 use std::io::Read;
+use std::mem;
 
-use anyhow;
+use anyhow::Result;
 
 use crate::catalog::ColumnType;
 
@@ -24,25 +25,24 @@ impl Value {
             }
         }
     }
-    pub fn deserialize(data: &[u8], column_type: &ColumnType) -> anyhow::Result<(Self, usize)> {
+    pub fn deserialize(data: &[u8], column_type: &ColumnType) -> Result<(Self, usize)> {
         let mut reader = &data[..];
         match column_type {
             ColumnType::Int => {
-                let mut buf = [0u8; 4];
+                let mut buf = [0u8; mem::size_of::<i32>()];
                 reader.read_exact(&mut buf)?;
                 let v = i32::from_be_bytes(buf);
-                Ok((Value::Int(v), 4))
+                Ok((Value::Int(v), mem::size_of::<i32>()))
             }
             ColumnType::Varchar => {
-                let mut buf = [0u8; 4];
+                let mut buf = [0u8; mem::size_of::<u32>()];
                 reader.read_exact(&mut buf)?;
                 let size = u32::from_be_bytes(buf) as usize;
                 let mut str_buf = vec![0u8; size];
                 reader.read_exact(&mut str_buf)?;
-                // TODO: remove unwrap
                 Ok((
-                    Value::Varchar(String::from_utf8(str_buf).unwrap()),
-                    4usize + size,
+                    Value::Varchar(String::from_utf8(str_buf)?),
+                    mem::size_of::<u32>() + size,
                 ))
             }
         }
@@ -51,7 +51,7 @@ impl Value {
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
+        match self {
             Value::Int(v) => write!(f, "{}", v),
             Value::Varchar(v) => write!(f, "{}", v),
         }

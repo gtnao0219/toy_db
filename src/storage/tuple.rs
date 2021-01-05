@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use anyhow;
+use anyhow::Result;
 
 use crate::catalog::Schema;
 use crate::value::Value;
@@ -11,14 +11,14 @@ pub struct Tuple {
 }
 
 impl Tuple {
-    pub fn serialize(&self) -> anyhow::Result<Vec<u8>> {
+    pub fn serialize(&self) -> Result<Vec<u8>> {
         let mut buf = Vec::new();
         for value in self.values.iter() {
-            buf.write(&value.serialize())?;
+            buf.write_all(&value.serialize())?;
         }
         Ok(buf)
     }
-    pub fn deserialize(data: &[u8], schema: &Schema) -> anyhow::Result<Tuple> {
+    pub fn deserialize(data: &[u8], schema: &Schema) -> Result<Tuple> {
         let mut values = Vec::new();
         let mut position = 0;
         for column in schema.columns.iter() {

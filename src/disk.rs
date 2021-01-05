@@ -2,12 +2,9 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
-use anyhow;
+use anyhow::Result;
 
-// use super::page::table_page::TABLE_PAGE_SIZE;
-
-// tmp
-const PAGE_SIZE: usize = 4096;
+pub const PAGE_SIZE: usize = 4096;
 const DATAFILE_NAME: &str = "data";
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
@@ -17,9 +14,9 @@ pub struct DiskManager {
 
 impl DiskManager {
     pub fn new(home_dir: String) -> Self {
-        Self { home_dir: home_dir }
+        Self { home_dir }
     }
-    pub fn write_page(&self, block_number: usize, data: &[u8]) -> anyhow::Result<()> {
+    pub fn write_page(&self, block_number: usize, data: &[u8]) -> Result<()> {
         let file_path_buf = Path::new(&self.home_dir).join(DATAFILE_NAME);
         let file_path = file_path_buf.as_path();
         if !file_path.exists() {
@@ -27,11 +24,11 @@ impl DiskManager {
         }
         let mut file = OpenOptions::new().write(true).open(file_path)?;
         file.seek(SeekFrom::Start((block_number * PAGE_SIZE) as u64))?;
-        file.write(data)?;
+        file.write_all(data)?;
         Ok(())
     }
 
-    pub fn write_new_page(&self, data: &[u8]) -> anyhow::Result<usize> {
+    pub fn write_new_page(&self, data: &[u8]) -> Result<usize> {
         let file_path_buf = Path::new(&self.home_dir).join(DATAFILE_NAME);
         let file_path = file_path_buf.as_path();
         let metadata = file_path.metadata()?;
@@ -40,7 +37,7 @@ impl DiskManager {
         Ok(block_number)
     }
 
-    pub fn read_page(&self, block_number: usize) -> anyhow::Result<Vec<u8>> {
+    pub fn read_page(&self, block_number: usize) -> Result<Vec<u8>> {
         let file_path_buf = Path::new(&self.home_dir).join(DATAFILE_NAME);
         let file_path = file_path_buf.as_path();
         let mut file = File::open(file_path)?;
@@ -53,11 +50,10 @@ impl DiskManager {
 
 #[cfg(test)]
 mod tests {
-    use crate::disk::DiskManager;
-    // tmp
-    const PAGE_SIZE: usize = 4096;
+    use crate::disk::{DiskManager, PAGE_SIZE};
+    use anyhow::Result;
     #[test]
-    fn write_and_read_page() -> anyhow::Result<()> {
+    fn write_and_read_page() -> Result<()> {
         let disk_manager = DiskManager::new("tmp/".to_string());
         disk_manager.write_page(0, &[65u8; PAGE_SIZE])?;
         disk_manager.write_page(1, &[66u8; PAGE_SIZE])?;

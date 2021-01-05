@@ -1,7 +1,8 @@
 use std::cmp;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
-use anyhow;
+use anyhow::Result;
 
 use crate::disk::DiskManager;
 use crate::storage::table::Table;
@@ -29,26 +30,22 @@ pub enum ColumnType {
 pub struct Catalog {
     disk_manager: Arc<DiskManager>,
     catalog_schema_map: CatalogSchemaMap,
-    oid_counter: Arc<Mutex<usize>>,
+    oid_counter: Arc<AtomicUsize>,
 }
 
 impl Catalog {
     pub fn new(disk_manager: Arc<DiskManager>) -> Self {
         let catalog_schema_map = CatalogSchemaMap::new();
         Catalog {
-            disk_manager: disk_manager,
-            catalog_schema_map: catalog_schema_map,
-            oid_counter: Arc::new(Mutex::new(0)),
+            disk_manager,
+            catalog_schema_map,
+            oid_counter: Arc::new(AtomicUsize::new(0)),
         }
     }
-    pub fn create_table(&self, table_name: &String, schema: &Schema) -> anyhow::Result<()> {
+    pub fn create_table(&self, table_name: &str, schema: &Schema) -> Result<()> {
         let table = Table::create(&self.disk_manager, schema)?;
-        let new_oid: usize;
-        {
-            let mut v = self.oid_counter.lock().unwrap();
-            *v = *v + 1;
-            new_oid = *v;
-        }
+        self.oid_counter.fetch_add(1, Ordering::Relaxed);
+        let new_oid = self.oid_counter.load(Ordering::Relaxed);
         let catalog_tables = Table::new(
             &self.disk_manager,
             &self.catalog_schema_map.catalog_table,
@@ -57,7 +54,7 @@ impl Catalog {
         catalog_tables.insert_tuple(Tuple {
             values: vec![
                 Value::Int(new_oid as i32),
-                Value::Varchar(table_name.clone()),
+                Value::Varchar(table_name.to_string()),
             ],
         })?;
         let header = Table::new(&self.disk_manager, &self.catalog_schema_map.header, 0);
@@ -86,7 +83,7 @@ impl Catalog {
         }
         Ok(())
     }
-    pub fn get_schema(&self, table_name: &String) -> anyhow::Result<Option<Schema>> {
+    pub fn get_schema(&self, table_name: &str) -> Result<Option<Schema>> {
         match self.get_oid(table_name)? {
             Some(oid) => {
                 let table = Table::new(
@@ -115,12 +112,12 @@ impl Catalog {
                         }
                     }
                 }
-                Ok(Some(Schema { columns: columns }))
+                Ok(Some(Schema { columns }))
             }
             None => Ok(None),
         }
     }
-    pub fn get_first_block_number(&self, table_name: &String) -> anyhow::Result<Option<usize>> {
+    pub fn get_first_block_number(&self, table_name: &str) -> Result<Option<usize>> {
         match self.get_oid(table_name)? {
             Some(oid) => {
                 let table = Table::new(&self.disk_manager, &self.catalog_schema_map.header, 0);
@@ -140,7 +137,7 @@ impl Catalog {
             None => Ok(None),
         }
     }
-    pub fn get_oid(&self, table_name: &String) -> anyhow::Result<Option<usize>> {
+    pub fn get_oid(&self, table_name: &str) -> Result<Option<usize>> {
         let table = Table::new(
             &self.disk_manager,
             &self.catalog_schema_map.catalog_table,
@@ -159,7 +156,7 @@ impl Catalog {
         }
         Ok(None)
     }
-    pub fn initialize(&self) -> anyhow::Result<()> {
+    pub fn initialize(&self) -> Result<()> {
         let header_table = Table::create(&self.disk_manager, &self.catalog_schema_map.header)?;
         header_table.insert_tuple(Tuple {
             values: vec![Value::Int(0), Value::Int(1)],
@@ -229,10 +226,7 @@ impl Catalog {
                 }
             }
         }
-        {
-            let mut v = self.oid_counter.lock().unwrap();
-            *v = max;
-        }
+        self.oid_counter.store(max, Ordering::Relaxed);
     }
 }
 
