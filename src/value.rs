@@ -1,3 +1,4 @@
+use std::fmt;
 use std::i32;
 use std::io;
 use std::io::Read;
@@ -43,6 +44,15 @@ impl Value {
                     4usize + size,
                 ))
             }
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            Value::Int(v) => write!(f, "{}", v),
+            Value::Varchar(v) => write!(f, "{}", v),
         }
     }
 }

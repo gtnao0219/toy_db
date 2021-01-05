@@ -1,3 +1,4 @@
+use std::cmp;
 use std::io;
 use std::sync::{Arc, Mutex};
 
@@ -32,9 +33,10 @@ pub struct Catalog {
 
 impl Catalog {
     pub fn new(disk_manager: Arc<DiskManager>) -> Self {
+        let catalog_schema_map = CatalogSchemaMap::new();
         Catalog {
             disk_manager: disk_manager,
-            catalog_schema_map: CatalogSchemaMap::new(),
+            catalog_schema_map: catalog_schema_map,
             oid_counter: Arc::new(Mutex::new(0)),
         }
     }
@@ -75,13 +77,86 @@ impl Catalog {
                     Value::Int(new_oid as i32),
                     Value::Varchar(c.name.clone()),
                     Value::Varchar(match c.column_type {
-                        ColumnType::Int => "integer".to_string(),
+                        ColumnType::Int => "int".to_string(),
                         ColumnType::Varchar => "varchar".to_string(),
                     }),
                 ],
             })?;
         }
         Ok(())
+    }
+    pub fn get_schema(&self, table_name: &String) -> io::Result<Option<Schema>> {
+        match self.get_oid(table_name)? {
+            Some(oid) => {
+                let table = Table::new(
+                    &self.disk_manager,
+                    &self.catalog_schema_map.catalog_attribute,
+                    2,
+                );
+                let mut columns = Vec::new();
+                for page in table {
+                    for tuple in page.tuples.iter() {
+                        if let Value::Int(v) = tuple.values[0] {
+                            if v as usize == oid {
+                                if let Value::Varchar(name) = &tuple.values[1] {
+                                    if let Value::Varchar(column_type_string) = &tuple.values[2] {
+                                        columns.push(Column {
+                                            name: name.clone(),
+                                            column_type: match &**column_type_string {
+                                                "int" => ColumnType::Int,
+                                                "varchar" => ColumnType::Varchar,
+                                                _ => ColumnType::Varchar,
+                                            },
+                                        })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(Some(Schema { columns: columns }))
+            }
+            None => Ok(None),
+        }
+    }
+    pub fn get_first_block_number(&self, table_name: &String) -> io::Result<Option<usize>> {
+        match self.get_oid(table_name)? {
+            Some(oid) => {
+                let table = Table::new(&self.disk_manager, &self.catalog_schema_map.header, 0);
+                for page in table {
+                    for tuple in page.tuples.iter() {
+                        if let Value::Int(v) = tuple.values[0] {
+                            if v as usize == oid {
+                                if let Value::Int(first_block_number) = tuple.values[1] {
+                                    return Ok(Some(first_block_number as usize));
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(None)
+            }
+            None => Ok(None),
+        }
+    }
+    pub fn get_oid(&self, table_name: &String) -> io::Result<Option<usize>> {
+        let table = Table::new(
+            &self.disk_manager,
+            &self.catalog_schema_map.catalog_table,
+            1,
+        );
+        for page in table {
+            for tuple in page.tuples.iter() {
+                if let Value::Varchar(v) = &tuple.values[1] {
+                    if v == table_name {
+                        if let Value::Int(oid) = tuple.values[0] {
+                            return Ok(Some(oid as usize));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(None)
     }
     pub fn initialize(&self) -> io::Result<()> {
         let header_table = Table::create(&self.disk_manager, &self.catalog_schema_map.header)?;
@@ -142,6 +217,21 @@ impl Catalog {
             ],
         })?;
         Ok(())
+    }
+    pub fn set_oid(&self) {
+        let header = Table::new(&self.disk_manager, &self.catalog_schema_map.header, 0);
+        let mut max: usize = 0;
+        for page in header {
+            for tuple in page.tuples.iter() {
+                if let Value::Int(v) = tuple.values[0] {
+                    max = cmp::max(max, v as usize);
+                }
+            }
+        }
+        {
+            let mut v = self.oid_counter.lock().unwrap();
+            *v = max;
+        }
     }
 }
 
