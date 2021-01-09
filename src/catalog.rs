@@ -33,6 +33,13 @@ pub struct Catalog {
     oid_counter: Arc<AtomicUsize>,
 }
 
+const HEADER_FIRST_BLOCK_NUMBER: usize = 0;
+const CATALOG_TABLE_FIRST_BLOCK_NUMBER: usize = 1;
+const CATALOG_ATTRIBUTE_FIRST_BLOCK_NUMBER: usize = 2;
+const HEADER_OID: usize = 0;
+const CATALOG_TABLE_OID: usize = 1;
+const CATALOG_ATTRIBUTE_OID: usize = 1;
+
 impl Catalog {
     pub fn new(disk_manager: Arc<DiskManager>) -> Self {
         let catalog_schema_map = CatalogSchemaMap::new();
@@ -42,14 +49,112 @@ impl Catalog {
             oid_counter: Arc::new(AtomicUsize::new(0)),
         }
     }
+    pub fn initialize(&self) -> Result<()> {
+        let header_table = Table::create(&self.disk_manager, &self.catalog_schema_map.header)?;
+        header_table.insert_tuple(Tuple {
+            values: vec![
+                Value::Int(HEADER_OID as i32),
+                Value::Int(HEADER_FIRST_BLOCK_NUMBER as i32),
+            ],
+        })?;
+        header_table.insert_tuple(Tuple {
+            values: vec![
+                Value::Int(CATALOG_TABLE_OID as i32),
+                Value::Int(CATALOG_TABLE_FIRST_BLOCK_NUMBER as i32),
+            ],
+        })?;
+        header_table.insert_tuple(Tuple {
+            values: vec![
+                Value::Int(CATALOG_ATTRIBUTE_OID as i32),
+                Value::Int(CATALOG_ATTRIBUTE_FIRST_BLOCK_NUMBER as i32),
+            ],
+        })?;
+        let catalog_table_table =
+            Table::create(&self.disk_manager, &self.catalog_schema_map.catalog_table)?;
+        catalog_table_table.insert_tuple(Tuple {
+            values: vec![
+                Value::Int(CATALOG_TABLE_OID as i32),
+                Value::Varchar("catalog_tables".to_string()),
+            ],
+        })?;
+        catalog_table_table.insert_tuple(Tuple {
+            values: vec![
+                Value::Int(CATALOG_ATTRIBUTE_OID as i32),
+                Value::Varchar("catalog_attributes".to_string()),
+            ],
+        })?;
+        let catalog_attribute_table = Table::create(
+            &self.disk_manager,
+            &self.catalog_schema_map.catalog_attribute,
+        )?;
+        catalog_attribute_table.insert_tuple(Tuple {
+            values: vec![
+                Value::Int(CATALOG_TABLE_OID as i32),
+                Value::Varchar("object_id".to_string()),
+                Value::Varchar("integer".to_string()),
+            ],
+        })?;
+        catalog_attribute_table.insert_tuple(Tuple {
+            values: vec![
+                Value::Int(CATALOG_TABLE_OID as i32),
+                Value::Varchar("name".to_string()),
+                Value::Varchar("varchar".to_string()),
+            ],
+        })?;
+        catalog_attribute_table.insert_tuple(Tuple {
+            values: vec![
+                Value::Int(CATALOG_ATTRIBUTE_OID as i32),
+                Value::Varchar("object_id".to_string()),
+                Value::Varchar("integer".to_string()),
+            ],
+        })?;
+        catalog_attribute_table.insert_tuple(Tuple {
+            values: vec![
+                Value::Int(CATALOG_ATTRIBUTE_OID as i32),
+                Value::Varchar("name".to_string()),
+                Value::Varchar("varchar".to_string()),
+            ],
+        })?;
+        catalog_attribute_table.insert_tuple(Tuple {
+            values: vec![
+                Value::Int(CATALOG_ATTRIBUTE_OID as i32),
+                Value::Varchar("type".to_string()),
+                Value::Varchar("varchar".to_string()),
+            ],
+        })?;
+        Ok(())
+    }
+    pub fn bootstrap(&self) {
+        self.set_oid();
+    }
+    fn set_oid(&self) {
+        let header = Table::new(
+            &self.disk_manager,
+            &self.catalog_schema_map.header,
+            HEADER_FIRST_BLOCK_NUMBER,
+        );
+        let mut max: usize = 0;
+        for page in header {
+            for tuple in page.tuples.iter() {
+                if let Value::Int(v) = tuple.values[0] {
+                    max = cmp::max(max, v as usize);
+                }
+            }
+        }
+        self.oid_counter.store(max, Ordering::Relaxed);
+    }
     pub fn create_table(&self, table_name: &str, schema: &Schema) -> Result<()> {
+        // TODO: validations
+        // table name dup, attribute name dup
+        // create table page.
         let table = Table::create(&self.disk_manager, schema)?;
+        // insert into catalog_table.
         self.oid_counter.fetch_add(1, Ordering::Relaxed);
         let new_oid = self.oid_counter.load(Ordering::Relaxed);
         let catalog_tables = Table::new(
             &self.disk_manager,
             &self.catalog_schema_map.catalog_table,
-            1,
+            CATALOG_TABLE_FIRST_BLOCK_NUMBER,
         );
         catalog_tables.insert_tuple(Tuple {
             values: vec![
@@ -57,17 +162,23 @@ impl Catalog {
                 Value::Varchar(table_name.to_string()),
             ],
         })?;
-        let header = Table::new(&self.disk_manager, &self.catalog_schema_map.header, 0);
+        // insert into header.
+        let header = Table::new(
+            &self.disk_manager,
+            &self.catalog_schema_map.header,
+            HEADER_FIRST_BLOCK_NUMBER,
+        );
         header.insert_tuple(Tuple {
             values: vec![
                 Value::Int(new_oid as i32),
                 Value::Int(table.first_block_number as i32),
             ],
         })?;
+        // insert into catalog_attribute.
         let catalog_attributes = Table::new(
             &self.disk_manager,
             &self.catalog_schema_map.catalog_attribute,
-            2,
+            CATALOG_ATTRIBUTE_FIRST_BLOCK_NUMBER,
         );
         for c in schema.columns.iter() {
             catalog_attributes.insert_tuple(Tuple {
@@ -89,7 +200,7 @@ impl Catalog {
                 let table = Table::new(
                     &self.disk_manager,
                     &self.catalog_schema_map.catalog_attribute,
-                    2,
+                    CATALOG_ATTRIBUTE_FIRST_BLOCK_NUMBER,
                 );
                 let mut columns = Vec::new();
                 for page in table {
@@ -120,8 +231,12 @@ impl Catalog {
     pub fn get_first_block_number(&self, table_name: &str) -> Result<Option<usize>> {
         match self.get_oid(table_name)? {
             Some(oid) => {
-                let table = Table::new(&self.disk_manager, &self.catalog_schema_map.header, 0);
-                for page in table {
+                let header = Table::new(
+                    &self.disk_manager,
+                    &self.catalog_schema_map.header,
+                    HEADER_FIRST_BLOCK_NUMBER,
+                );
+                for page in header {
                     for tuple in page.tuples.iter() {
                         if let Value::Int(v) = tuple.values[0] {
                             if v as usize == oid {
@@ -141,7 +256,7 @@ impl Catalog {
         let table = Table::new(
             &self.disk_manager,
             &self.catalog_schema_map.catalog_table,
-            1,
+            CATALOG_TABLE_FIRST_BLOCK_NUMBER,
         );
         for page in table {
             for tuple in page.tuples.iter() {
@@ -155,78 +270,6 @@ impl Catalog {
             }
         }
         Ok(None)
-    }
-    pub fn initialize(&self) -> Result<()> {
-        let header_table = Table::create(&self.disk_manager, &self.catalog_schema_map.header)?;
-        header_table.insert_tuple(Tuple {
-            values: vec![Value::Int(0), Value::Int(1)],
-        })?;
-        header_table.insert_tuple(Tuple {
-            values: vec![Value::Int(1), Value::Int(2)],
-        })?;
-        let catalog_table_table =
-            Table::create(&self.disk_manager, &self.catalog_schema_map.catalog_table)?;
-        catalog_table_table.insert_tuple(Tuple {
-            values: vec![Value::Int(0), Value::Varchar("catalog_tables".to_string())],
-        })?;
-        catalog_table_table.insert_tuple(Tuple {
-            values: vec![
-                Value::Int(1),
-                Value::Varchar("catalog_attributes".to_string()),
-            ],
-        })?;
-        let catalog_attribute_table = Table::create(
-            &self.disk_manager,
-            &self.catalog_schema_map.catalog_attribute,
-        )?;
-        catalog_attribute_table.insert_tuple(Tuple {
-            values: vec![
-                Value::Int(0),
-                Value::Varchar("object_id".to_string()),
-                Value::Varchar("integer".to_string()),
-            ],
-        })?;
-        catalog_attribute_table.insert_tuple(Tuple {
-            values: vec![
-                Value::Int(0),
-                Value::Varchar("name".to_string()),
-                Value::Varchar("varchar".to_string()),
-            ],
-        })?;
-        catalog_attribute_table.insert_tuple(Tuple {
-            values: vec![
-                Value::Int(1),
-                Value::Varchar("object_id".to_string()),
-                Value::Varchar("integer".to_string()),
-            ],
-        })?;
-        catalog_attribute_table.insert_tuple(Tuple {
-            values: vec![
-                Value::Int(1),
-                Value::Varchar("name".to_string()),
-                Value::Varchar("varchar".to_string()),
-            ],
-        })?;
-        catalog_attribute_table.insert_tuple(Tuple {
-            values: vec![
-                Value::Int(1),
-                Value::Varchar("type".to_string()),
-                Value::Varchar("varchar".to_string()),
-            ],
-        })?;
-        Ok(())
-    }
-    pub fn set_oid(&self) {
-        let header = Table::new(&self.disk_manager, &self.catalog_schema_map.header, 0);
-        let mut max: usize = 0;
-        for page in header {
-            for tuple in page.tuples.iter() {
-                if let Value::Int(v) = tuple.values[0] {
-                    max = cmp::max(max, v as usize);
-                }
-            }
-        }
-        self.oid_counter.store(max, Ordering::Relaxed);
     }
 }
 

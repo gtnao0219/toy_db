@@ -30,12 +30,12 @@ impl Parser {
     fn reset_position(&mut self) {
         self.position = 0;
     }
-    fn consume_or_err(&mut self, token: Token) -> Result<(), String> {
+    fn consume_or_err(&mut self, token: Token) -> Result<()> {
         if token == self.tokens[self.position] {
             self.position += 1;
             Ok(())
         } else {
-            Err(format!("expected {:?}", token))
+            Err(anyhow!("expected {:?}", token))
         }
     }
     fn consume(&mut self, token: Token) -> bool {
@@ -46,26 +46,26 @@ impl Parser {
             false
         }
     }
-    fn consume_ident_or_err(&mut self) -> Result<String, String> {
+    fn consume_ident_or_err(&mut self) -> Result<String> {
         if let Token::Ident(v) = &self.tokens[self.position] {
             self.position += 1;
             Ok(v.clone())
         } else {
-            Err("expected identifier".to_string())
+            Err(anyhow!("expected identifier"))
         }
     }
-    fn consume_lit_or_err(&mut self) -> Result<Value, String> {
+    fn consume_lit_or_err(&mut self) -> Result<Value> {
         if let Token::Lit(v) = &self.tokens[self.position] {
             self.position += 1;
             Ok(v.clone())
         } else {
-            Err("expected value".to_string())
+            Err(anyhow!("expected value"))
         }
     }
-    pub fn parse(&mut self) -> Result<Stmt, String> {
+    pub fn parse(&mut self) -> Result<Stmt> {
         self.stmt()
     }
-    fn stmt(&mut self) -> Result<Stmt, String> {
+    fn stmt(&mut self) -> Result<Stmt> {
         if let Ok(ast) = self.create_table_stmt() {
             Ok(Stmt::CreateTableStmt(ast))
         } else if let Ok(ast) = self.insert_stmt() {
@@ -73,10 +73,10 @@ impl Parser {
         } else if let Ok(ast) = self.select_stmt() {
             Ok(Stmt::SelectStmt(ast))
         } else {
-            Err("invalid query".to_string())
+            Err(anyhow!("invalid query"))
         }
     }
-    fn create_table_stmt(&mut self) -> Result<ast::CreateTableStmtAst, String> {
+    fn create_table_stmt(&mut self) -> Result<ast::CreateTableStmtAst> {
         self.reset_position();
         self.consume_or_err(Token::KeywordCreate)?;
         self.consume_or_err(Token::KeywordTable)?;
@@ -87,7 +87,7 @@ impl Parser {
             table_element_list,
         })
     }
-    fn table_element_list(&mut self) -> Result<Vec<ast::TableElementAst>, String> {
+    fn table_element_list(&mut self) -> Result<Vec<ast::TableElementAst>> {
         self.consume_or_err(Token::LeftParen)?;
         let mut ret: Vec<ast::TableElementAst> = Vec::new();
         let table_element = self.table_element()?;
@@ -103,7 +103,7 @@ impl Parser {
         self.consume_or_err(Token::RightParen)?;
         Ok(ret)
     }
-    fn table_element(&mut self) -> Result<ast::TableElementAst, String> {
+    fn table_element(&mut self) -> Result<ast::TableElementAst> {
         let column_name = self.consume_ident_or_err()?;
         if self.consume(Token::KeywordInt) {
             Ok(ast::TableElementAst {
@@ -116,10 +116,10 @@ impl Parser {
                 column_type: ColumnType::Varchar,
             })
         } else {
-            Err("invalid column type".to_string())
+            Err(anyhow!("invalid column type"))
         }
     }
-    fn insert_stmt(&mut self) -> Result<ast::InsertStmtAst, String> {
+    fn insert_stmt(&mut self) -> Result<ast::InsertStmtAst> {
         self.reset_position();
         self.consume_or_err(Token::KeywordInsert)?;
         self.consume_or_err(Token::KeywordInto)?;
@@ -127,7 +127,7 @@ impl Parser {
         let values = self.table_value_constructor()?;
         Ok(ast::InsertStmtAst { table_name, values })
     }
-    fn table_value_constructor(&mut self) -> Result<Vec<Value>, String> {
+    fn table_value_constructor(&mut self) -> Result<Vec<Value>> {
         self.consume_or_err(Token::KeywordValues)?;
         self.consume_or_err(Token::LeftParen)?;
         let mut ret: Vec<Value> = Vec::new();
@@ -144,7 +144,7 @@ impl Parser {
         self.consume_or_err(Token::RightParen)?;
         Ok(ret)
     }
-    fn select_stmt(&mut self) -> Result<ast::SelectStmtAst, String> {
+    fn select_stmt(&mut self) -> Result<ast::SelectStmtAst> {
         self.reset_position();
         self.consume_or_err(Token::KeywordSelect)?;
         self.consume_or_err(Token::Asterisk)?;

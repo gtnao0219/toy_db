@@ -112,7 +112,6 @@ impl TablePage {
     pub fn insert_tuple(&mut self, tuple: &Tuple) -> Result<bool> {
         let b = tuple.serialize()?;
         let tuple_size = b.len();
-        // println!("{:?}", &self);
         if ((self.header.upper_offset - self.header.lower_offset) as usize)
             < TABLE_PAGE_LINE_POINTER_SIZE + tuple_size
         {

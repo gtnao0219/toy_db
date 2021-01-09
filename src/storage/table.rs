@@ -67,16 +67,17 @@ impl<'a> Iterator for Table<'a> {
         if self.current_block_number == -1 {
             return None;
         }
-        // TODO: remove unwrap
-        let page = TablePage::deserialize(
+        if let Ok(page) = TablePage::deserialize(
             &self
                 .disk_manager
                 .read_page(self.current_block_number as usize)
                 .unwrap(),
             self.schema,
-        )
-        .unwrap();
-        self.current_block_number = page.header.next_block_number;
-        Some(page)
+        ) {
+            self.current_block_number = page.header.next_block_number;
+            Some(page)
+        } else {
+            None
+        }
     }
 }

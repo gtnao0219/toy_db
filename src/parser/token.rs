@@ -26,7 +26,7 @@ pub enum Token {
     EOF,
 }
 
-pub fn tokenize(iter: &mut Peekable<Chars>) -> Result<Vec<Token>, String> {
+pub fn tokenize(iter: &mut Peekable<Chars>) -> Result<Vec<Token>> {
     let mut tokens = Vec::new();
     loop {
         match iter.peek() {
@@ -86,7 +86,7 @@ pub fn tokenize(iter: &mut Peekable<Chars>) -> Result<Vec<Token>, String> {
                 if let Ok(v) = ret.parse() {
                     tokens.push(Token::Lit(Value::Int(v)));
                 } else {
-                    return Err(format!("failed convert: {}", ret));
+                    return Err(anyhow!("failed convert: {}", ret));
                 }
             }
             Some('\'') => {
@@ -105,7 +105,7 @@ pub fn tokenize(iter: &mut Peekable<Chars>) -> Result<Vec<Token>, String> {
                                     ret = format!("{}{}", ret, cc.to_string());
                                 }
                                 _ => {
-                                    return Err(format!("invalid string literal: {}", ret));
+                                    return Err(anyhow!("invalid string literal: {}", ret));
                                 }
                             }
                         }
@@ -114,13 +114,13 @@ pub fn tokenize(iter: &mut Peekable<Chars>) -> Result<Vec<Token>, String> {
                             iter.next();
                         }
                         _ => {
-                            return Err(format!("invalid string literal: {}", ret));
+                            return Err(anyhow!("invalid string literal: {}", ret));
                         }
                     }
                 }
                 tokens.push(Token::Lit(Value::Varchar(ret)));
             }
-            Some(c) => return Err(format!("invalid token: {}", c)),
+            Some(c) => return Err(anyhow!("invalid token: {}", c)),
             None => {
                 tokens.push(Token::EOF);
                 break;

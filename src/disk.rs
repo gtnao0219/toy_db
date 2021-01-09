@@ -32,6 +32,7 @@ impl DiskManager {
         let file_path_buf = Path::new(&self.home_dir).join(DATAFILE_NAME);
         let file_path = file_path_buf.as_path();
         let metadata = file_path.metadata()?;
+        // TODO: get block number safely.
         let block_number = (metadata.len() / PAGE_SIZE as u64) as usize;
         self.write_page(block_number, data)?;
         Ok(block_number)

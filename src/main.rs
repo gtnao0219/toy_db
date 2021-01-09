@@ -3,7 +3,6 @@ extern crate toy_db;
 use std::env;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::process;
 use std::sync::Arc;
 use std::thread;
 
@@ -16,31 +15,30 @@ use toy_db::parser::token;
 use toy_db::parser::{Parser, Stmt};
 
 fn main() -> Result<()> {
-    let args: Vec<String> = env::args().collect();
-    let disk_manager_arc = Arc::new(DiskManager::new("data/".to_string()));
-    let catalog_arc = Arc::new(Catalog::new(disk_manager_arc.clone()));
+    let args = env::args().collect::<Vec<String>>();
+    let disk_manager = Arc::new(DiskManager::new("data/".to_string()));
+    let catalog = Arc::new(Catalog::new(disk_manager.clone()));
     match &*args[1] {
         "init" => {
-            catalog_arc.initialize()?;
+            catalog.initialize()?;
             return Ok(());
         }
         "start" => {
-            let catalog = catalog_arc.clone();
-            catalog.set_oid();
+            catalog.bootstrap();
         }
         _ => panic!("unknown subcomand"),
     }
-    let listner = TcpListener::bind("127.0.0.1:3305").expect("Error: failed to bind.");
+    let listner = TcpListener::bind("127.0.0.1:3305")?;
     for streams in listner.incoming() {
         match streams {
             Err(e) => {
                 eprintln!("Error: {:?}", e)
             }
             Ok(stream) => {
-                let catalog = catalog_arc.clone();
-                let disk_manager = disk_manager_arc.clone();
+                let catalog_clone = catalog.clone();
+                let disk_manager_clone = disk_manager.clone();
                 thread::spawn(move || {
-                    handle(stream, catalog, disk_manager)
+                    handle(stream, catalog_clone, disk_manager_clone)
                         .unwrap_or_else(|e| eprintln!("Error: {:?}", e))
                 });
             }
@@ -56,34 +54,20 @@ fn handle(
 ) -> Result<()> {
     let mut buf = String::new();
     stream.read_to_string(&mut buf)?;
-    let tokens = match token::tokenize(&mut buf.chars().peekable()) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("failed tokenize: {}", e);
-            process::exit(1);
-        }
-    };
-    println!("token is {:?}", tokens);
+    let tokens = token::tokenize(&mut buf.chars().peekable())?;
     let mut parser = Parser::new(tokens);
-    let ast = match parser.parse() {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("failed parse: {}", e);
-            process::exit(1);
-        }
-    };
-    println!("ast is {:?}", ast);
+    let stmt = parser.parse()?;
 
-    let result = match ast {
-        Stmt::CreateTableStmt(_) => CreateTableExecutor { stmt: ast, catalog }.execute()?,
+    let result = match stmt {
+        Stmt::CreateTableStmt(_) => CreateTableExecutor { stmt, catalog }.execute()?,
         Stmt::InsertStmt(_) => InsertExecutor {
-            stmt: ast,
+            stmt,
             catalog,
             disk_manager,
         }
         .execute()?,
         Stmt::SelectStmt(_) => SelectExecutor {
-            stmt: ast,
+            stmt,
             catalog,
             disk_manager,
         }
