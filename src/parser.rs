@@ -161,8 +161,9 @@ mod tests {
     use crate::parser::token::Token;
     use crate::parser::{Parser, Stmt};
     use crate::value::Value;
+    use anyhow::Result;
     #[test]
-    fn select_stmt() {
+    fn select_stmt() -> Result<()> {
         let mut parser = Parser::new(vec![
             Token::KeywordSelect,
             Token::Asterisk,
@@ -171,15 +172,17 @@ mod tests {
             Token::Semicolon,
             Token::EOF,
         ]);
+        let ret = parser.parse()?;
         assert_eq!(
-            parser.parse(),
-            Ok(Stmt::SelectStmt(ast::SelectStmtAst {
+            ret,
+            Stmt::SelectStmt(ast::SelectStmtAst {
                 table_name: "users".to_string(),
-            }))
+            })
         );
+        Ok(())
     }
     #[test]
-    fn create_table_stmt() {
+    fn create_table_stmt() -> Result<()> {
         let mut parser = Parser::new(vec![
             Token::KeywordCreate,
             Token::KeywordTable,
@@ -194,9 +197,10 @@ mod tests {
             Token::Semicolon,
             Token::EOF,
         ]);
+        let ret = parser.parse()?;
         assert_eq!(
-            parser.parse(),
-            Ok(Stmt::CreateTableStmt(ast::CreateTableStmtAst {
+            ret,
+            Stmt::CreateTableStmt(ast::CreateTableStmtAst {
                 table_name: "users".to_string(),
                 table_element_list: vec![
                     ast::TableElementAst {
@@ -208,11 +212,12 @@ mod tests {
                         column_type: ColumnType::Varchar,
                     }
                 ]
-            }))
+            })
         );
+        Ok(())
     }
     #[test]
-    fn insert_stmt() {
+    fn insert_stmt() -> Result<()> {
         let mut parser = Parser::new(vec![
             Token::KeywordInsert,
             Token::KeywordInto,
@@ -226,12 +231,14 @@ mod tests {
             Token::Semicolon,
             Token::EOF,
         ]);
+        let ret = parser.parse()?;
         assert_eq!(
-            parser.parse(),
-            Ok(Stmt::InsertStmt(ast::InsertStmtAst {
+            ret,
+            Stmt::InsertStmt(ast::InsertStmtAst {
                 table_name: "users".to_string(),
                 values: vec![Value::Int(1), Value::Varchar("foo".to_string()),]
-            }))
+            })
         );
+        Ok(())
     }
 }

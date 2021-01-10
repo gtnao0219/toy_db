@@ -134,27 +134,30 @@ pub fn tokenize(iter: &mut Peekable<Chars>) -> Result<Vec<Token>> {
 mod tests {
     use crate::parser::token::{tokenize, Token};
     use crate::value::Value;
+    use anyhow::Result;
     #[test]
-    fn select_query() {
+    fn select_query() -> Result<()> {
         let sql = "
     SELECT
       *
     FROM users;
     ";
+        let ret = tokenize(&mut sql.chars().peekable())?;
         assert_eq!(
-            tokenize(&mut sql.chars().peekable()),
-            Ok(vec![
+            ret,
+            vec![
                 Token::KeywordSelect,
                 Token::Asterisk,
                 Token::KeywordFrom,
                 Token::Ident("users".to_string()),
                 Token::Semicolon,
                 Token::EOF,
-            ])
+            ]
         );
+        Ok(())
     }
     #[test]
-    fn create_table_query() {
+    fn create_table_query() -> Result<()> {
         let sql = "
     CREATE TABLE users
     (
@@ -162,9 +165,10 @@ mod tests {
       name Varchar
     );
     ";
+        let ret = tokenize(&mut sql.chars().peekable())?;
         assert_eq!(
-            tokenize(&mut sql.chars().peekable()),
-            Ok(vec![
+            ret,
+            vec![
                 Token::KeywordCreate,
                 Token::KeywordTable,
                 Token::Ident("users".to_string()),
@@ -177,11 +181,12 @@ mod tests {
                 Token::RightParen,
                 Token::Semicolon,
                 Token::EOF,
-            ])
+            ]
         );
+        Ok(())
     }
     #[test]
-    fn insert_query() {
+    fn insert_query() -> Result<()> {
         let sql = "
     INSERT INTO users
     VALUES
@@ -190,9 +195,10 @@ mod tests {
       'foo'
     );
     ";
+        let ret = tokenize(&mut sql.chars().peekable())?;
         assert_eq!(
-            tokenize(&mut sql.chars().peekable()),
-            Ok(vec![
+            ret,
+            vec![
                 Token::KeywordInsert,
                 Token::KeywordInto,
                 Token::Ident("users".to_string()),
@@ -204,7 +210,8 @@ mod tests {
                 Token::RightParen,
                 Token::Semicolon,
                 Token::EOF,
-            ])
+            ]
         );
+        Ok(())
     }
 }
