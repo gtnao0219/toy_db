@@ -20,6 +20,7 @@ fn main() -> Result<()> {
     let catalog = Arc::new(Catalog::new(disk_manager.clone()));
     match &*args[1] {
         "init" => {
+            disk_manager.init_data_file()?;
             catalog.initialize()?;
             return Ok(());
         }
