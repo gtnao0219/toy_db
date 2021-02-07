@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
+use crate::buffer::BufferPoolManager;
 use crate::catalog::{Catalog, Column, Schema};
-use crate::disk::DiskManager;
 use crate::parser::Stmt;
 use crate::storage::table::Table;
 use crate::storage::tuple::Tuple;
@@ -51,7 +51,7 @@ impl Executor for CreateTableExecutor {
 pub struct InsertExecutor {
     pub stmt: Stmt,
     pub catalog: Arc<Catalog>,
-    pub disk_manager: Arc<DiskManager>,
+    pub buffer_pool_manager: Arc<BufferPoolManager>,
 }
 
 impl Executor for InsertExecutor {
@@ -61,7 +61,7 @@ impl Executor for InsertExecutor {
                 if let Some(first_block_number) =
                     self.catalog.get_first_block_number(&ast.table_name)?
                 {
-                    let table = Table::new(&self.disk_manager, &schema, first_block_number);
+                    let table = Table::new(&self.buffer_pool_manager, &schema, first_block_number);
                     table.insert_tuple(Tuple {
                         values: ast.values.clone(),
                     })?;
@@ -80,7 +80,7 @@ impl Executor for InsertExecutor {
 pub struct SelectExecutor {
     pub stmt: Stmt,
     pub catalog: Arc<Catalog>,
-    pub disk_manager: Arc<DiskManager>,
+    pub buffer_pool_manager: Arc<BufferPoolManager>,
 }
 
 impl Executor for SelectExecutor {
@@ -91,7 +91,7 @@ impl Executor for SelectExecutor {
                 if let Some(first_block_number) =
                     self.catalog.get_first_block_number(&ast.table_name)?
                 {
-                    let table = Table::new(&self.disk_manager, &schema, first_block_number);
+                    let table = Table::new(&self.buffer_pool_manager, &schema, first_block_number);
                     for page in table {
                         for tuple in page.tuples.iter() {
                             for (i, _) in schema.columns.iter().enumerate() {

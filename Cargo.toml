@@ -8,3 +8,5 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0"
+rand = "0.8.0"
+signal-hook = "0.3.4"

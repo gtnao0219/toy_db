@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::disk::DiskManager;
+use crate::buffer::BufferPoolManager;
 use crate::storage::table::Table;
 use crate::storage::tuple::Tuple;
 use crate::value::Value;
@@ -28,7 +28,7 @@ pub enum ColumnType {
 
 #[derive(Debug)]
 pub struct Catalog {
-    disk_manager: Arc<DiskManager>,
+    buffer_pool_manager: Arc<BufferPoolManager>,
     catalog_schema_map: CatalogSchemaMap,
     oid_counter: Arc<AtomicUsize>,
 }
@@ -41,16 +41,17 @@ const CATALOG_TABLE_OID: usize = 1;
 const CATALOG_ATTRIBUTE_OID: usize = 1;
 
 impl Catalog {
-    pub fn new(disk_manager: Arc<DiskManager>) -> Self {
+    pub fn new(buffer_pool_manager: Arc<BufferPoolManager>) -> Self {
         let catalog_schema_map = CatalogSchemaMap::new();
         Catalog {
-            disk_manager,
+            buffer_pool_manager,
             catalog_schema_map,
             oid_counter: Arc::new(AtomicUsize::new(0)),
         }
     }
     pub fn initialize(&self) -> Result<()> {
-        let header_table = Table::create(&self.disk_manager, &self.catalog_schema_map.header)?;
+        let header_table =
+            Table::create(&self.buffer_pool_manager, &self.catalog_schema_map.header)?;
         header_table.insert_tuple(Tuple {
             values: vec![
                 Value::Int(HEADER_OID as i32),
@@ -69,8 +70,10 @@ impl Catalog {
                 Value::Int(CATALOG_ATTRIBUTE_FIRST_BLOCK_NUMBER as i32),
             ],
         })?;
-        let catalog_table_table =
-            Table::create(&self.disk_manager, &self.catalog_schema_map.catalog_table)?;
+        let catalog_table_table = Table::create(
+            &self.buffer_pool_manager,
+            &self.catalog_schema_map.catalog_table,
+        )?;
         catalog_table_table.insert_tuple(Tuple {
             values: vec![
                 Value::Int(CATALOG_TABLE_OID as i32),
@@ -84,7 +87,7 @@ impl Catalog {
             ],
         })?;
         let catalog_attribute_table = Table::create(
-            &self.disk_manager,
+            &self.buffer_pool_manager,
             &self.catalog_schema_map.catalog_attribute,
         )?;
         catalog_attribute_table.insert_tuple(Tuple {
@@ -122,6 +125,7 @@ impl Catalog {
                 Value::Varchar("varchar".to_string()),
             ],
         })?;
+        self.buffer_pool_manager.flush_all_pages()?;
         Ok(())
     }
     pub fn bootstrap(&self) {
@@ -129,7 +133,7 @@ impl Catalog {
     }
     fn set_oid(&self) {
         let header = Table::new(
-            &self.disk_manager,
+            &self.buffer_pool_manager,
             &self.catalog_schema_map.header,
             HEADER_FIRST_BLOCK_NUMBER,
         );
@@ -147,12 +151,12 @@ impl Catalog {
         // TODO: validations
         // table name dup, attribute name dup
         // create table page.
-        let table = Table::create(&self.disk_manager, schema)?;
+        let table = Table::create(&self.buffer_pool_manager, schema)?;
         // insert into catalog_table.
         self.oid_counter.fetch_add(1, Ordering::Relaxed);
         let new_oid = self.oid_counter.load(Ordering::Relaxed);
         let catalog_tables = Table::new(
-            &self.disk_manager,
+            &self.buffer_pool_manager,
             &self.catalog_schema_map.catalog_table,
             CATALOG_TABLE_FIRST_BLOCK_NUMBER,
         );
@@ -164,7 +168,7 @@ impl Catalog {
         })?;
         // insert into header.
         let header = Table::new(
-            &self.disk_manager,
+            &self.buffer_pool_manager,
             &self.catalog_schema_map.header,
             HEADER_FIRST_BLOCK_NUMBER,
         );
@@ -176,7 +180,7 @@ impl Catalog {
         })?;
         // insert into catalog_attribute.
         let catalog_attributes = Table::new(
-            &self.disk_manager,
+            &self.buffer_pool_manager,
             &self.catalog_schema_map.catalog_attribute,
             CATALOG_ATTRIBUTE_FIRST_BLOCK_NUMBER,
         );
@@ -198,7 +202,7 @@ impl Catalog {
         match self.get_oid(table_name)? {
             Some(oid) => {
                 let table = Table::new(
-                    &self.disk_manager,
+                    &self.buffer_pool_manager,
                     &self.catalog_schema_map.catalog_attribute,
                     CATALOG_ATTRIBUTE_FIRST_BLOCK_NUMBER,
                 );
@@ -232,7 +236,7 @@ impl Catalog {
         match self.get_oid(table_name)? {
             Some(oid) => {
                 let header = Table::new(
-                    &self.disk_manager,
+                    &self.buffer_pool_manager,
                     &self.catalog_schema_map.header,
                     HEADER_FIRST_BLOCK_NUMBER,
                 );
@@ -254,7 +258,7 @@ impl Catalog {
     }
     pub fn get_oid(&self, table_name: &str) -> Result<Option<usize>> {
         let table = Table::new(
-            &self.disk_manager,
+            &self.buffer_pool_manager,
             &self.catalog_schema_map.catalog_table,
             CATALOG_TABLE_FIRST_BLOCK_NUMBER,
         );
