@@ -30,6 +30,13 @@ pub struct BufferPoolManager {
     buffer_pool: Mutex<BufferPool>,
 }
 
+#[derive(Debug)]
+pub struct FetchPageResult {
+    pub block_number: usize,
+    pub frame_id: usize,
+    pub data: Arc<RwLock<Vec<u8>>>,
+}
+
 impl BufferPoolManager {
     pub fn new(disk_manager: Arc<DiskManager>) -> Self {
         BufferPoolManager {
@@ -48,12 +55,16 @@ impl BufferPoolManager {
             }),
         }
     }
-    pub fn fetch_page(&self, block_number: usize) -> Result<(usize, Arc<RwLock<Vec<u8>>>)> {
+    pub fn fetch_page(&self, block_number: usize) -> Result<FetchPageResult> {
         let mut buffer_pool = self.buffer_pool.lock().unwrap();
         // If the page(P) exists in the pool, pin it and return it immediately.
         if let Some(&frame_id) = buffer_pool.page_table.get(&block_number) {
             buffer_pool.frames[frame_id].pin_count += 1;
-            return Ok((frame_id, buffer_pool.frames[frame_id].data.clone()));
+            return Ok(FetchPageResult {
+                block_number,
+                frame_id,
+                data: buffer_pool.frames[frame_id].data.clone(),
+            });
         }
         let frame_id: usize;
         // If P does not exist in the pool, find a replacement page(R) from the free list.
@@ -98,7 +109,11 @@ impl BufferPoolManager {
             pin_count: 1,
             block_number: Some(block_number),
         };
-        Ok((frame_id, buffer_pool.frames[frame_id].data.clone()))
+        Ok(FetchPageResult {
+            block_number,
+            frame_id,
+            data: buffer_pool.frames[frame_id].data.clone(),
+        })
     }
     pub fn unpin_frame(&self, frame_id: usize, dirty: bool) {
         let mut buffer_pool = self.buffer_pool.lock().unwrap();
@@ -107,11 +122,10 @@ impl BufferPoolManager {
             buffer_pool.frames[frame_id].dirty = dirty;
         }
     }
-    pub fn new_page(&self, data: &[u8]) -> Result<(usize, usize, Arc<RwLock<Vec<u8>>>)> {
+    pub fn new_page(&self, data: &[u8]) -> Result<FetchPageResult> {
         // Allocate page throught disk_manager.
         let block_number = self.disk_manager.write_new_page(&data)?;
-        let res = self.fetch_page(block_number)?;
-        Ok((block_number, res.0, res.1))
+        Ok(self.fetch_page(block_number)?)
     }
     pub fn flush_all_pages(&self) -> Result<()> {
         let buffer_pool = self.buffer_pool.lock().unwrap();

@@ -34,35 +34,35 @@ impl<'a> Table<'a> {
         schema: &'a Schema,
     ) -> Result<Self> {
         let res = buffer_pool_manager.new_page(&TablePage::new().serialize()?)?;
-        buffer_pool_manager.unpin_frame(res.1, true);
+        buffer_pool_manager.unpin_frame(res.frame_id, true);
         Ok(Table {
             buffer_pool_manager,
             schema,
-            first_block_number: res.0,
-            current_block_number: res.0 as i32,
+            first_block_number: res.block_number,
+            current_block_number: res.block_number as i32,
         })
     }
     pub fn insert_tuple(&self, tuple: Tuple) -> Result<()> {
         let mut block_number = self.first_block_number;
         loop {
             let res = self.buffer_pool_manager.fetch_page(block_number)?;
-            let mut page = TablePage::deserialize(&res.1.read().unwrap(), self.schema)?;
+            let mut page = TablePage::deserialize(&res.data.read().unwrap(), self.schema)?;
             if page.insert_tuple(&tuple)? {
-                let mut page_data = res.1.write().unwrap();
+                let mut page_data = res.data.write().unwrap();
                 page_data.clear();
                 page_data.write_all(&page.serialize()?)?;
-                self.buffer_pool_manager.unpin_frame(res.0, true);
+                self.buffer_pool_manager.unpin_frame(res.frame_id, true);
                 return Ok(());
             }
             if page.header.next_block_number == -1 {
                 let mut new_page = TablePage::new();
                 new_page.insert_tuple(&tuple)?;
                 let res = self.buffer_pool_manager.new_page(&new_page.serialize()?)?;
-                page.header.next_block_number = res.0 as i32;
-                let mut page_data = res.2.write().unwrap();
+                page.header.next_block_number = res.block_number as i32;
+                let mut page_data = res.data.write().unwrap();
                 page_data.clear();
                 page_data.write_all(&page.serialize()?)?;
-                self.buffer_pool_manager.unpin_frame(res.1, true);
+                self.buffer_pool_manager.unpin_frame(res.frame_id, true);
             } else {
                 block_number = page.header.next_block_number as usize;
             }
@@ -81,13 +81,13 @@ impl<'a> Iterator for Table<'a> {
             .buffer_pool_manager
             .fetch_page(self.current_block_number as usize)
             .unwrap();
-        let data = res.1.read().unwrap();
+        let data = res.data.read().unwrap();
         if let Ok(page) = TablePage::deserialize(&data, self.schema) {
             self.current_block_number = page.header.next_block_number;
-            self.buffer_pool_manager.unpin_frame(res.0, false);
+            self.buffer_pool_manager.unpin_frame(res.frame_id, false);
             Some(page)
         } else {
-            self.buffer_pool_manager.unpin_frame(res.0, false);
+            self.buffer_pool_manager.unpin_frame(res.frame_id, false);
             None
         }
     }
