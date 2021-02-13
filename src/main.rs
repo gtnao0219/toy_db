@@ -1,7 +1,7 @@
 extern crate toy_db;
 
 use std::env;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -14,6 +14,7 @@ use signal_hook::iterator::Signals;
 
 use toy_db::buffer::BufferPoolManager;
 use toy_db::catalog::Catalog;
+use toy_db::cli::Cli;
 use toy_db::disk::DiskManager;
 use toy_db::execution::{CreateTableExecutor, Executor, InsertExecutor, SelectExecutor};
 use toy_db::parser::token;
@@ -21,6 +22,10 @@ use toy_db::parser::{Parser, Stmt};
 
 fn main() -> Result<()> {
     let args = env::args().collect::<Vec<String>>();
+    if &*args[1] == "cli" {
+        Cli::new().start()?;
+        return Ok(());
+    }
     let disk_manager = Arc::new(DiskManager::new("data/".to_string()));
     let buffer_pool_manager = Arc::new(BufferPoolManager::new(disk_manager.clone()));
     let catalog = Arc::new(Catalog::new(buffer_pool_manager.clone()));
@@ -87,7 +92,9 @@ fn handle(
     buffer_pool_manager: Arc<BufferPoolManager>,
 ) -> Result<()> {
     let mut buf = String::new();
-    stream.read_to_string(&mut buf)?;
+    let mut reader = BufReader::new(&stream);
+    // not support multi lines query.
+    reader.read_line(&mut buf)?;
     let tokens = token::tokenize(&mut buf.chars().peekable())?;
     let mut parser = Parser::new(tokens);
     let stmt = parser.parse()?;

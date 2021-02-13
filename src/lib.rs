@@ -4,6 +4,7 @@ extern crate rand;
 
 pub mod buffer;
 pub mod catalog;
+pub mod cli;
 pub mod disk;
 pub mod execution;
 pub mod parser;
