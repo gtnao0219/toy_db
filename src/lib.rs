@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate anyhow;
 extern crate rand;
+extern crate reqwest;
+extern crate serde_json;
+extern crate warp;
 
 pub mod buffer;
 pub mod catalog;

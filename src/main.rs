@@ -1,16 +1,17 @@
 extern crate toy_db;
 
+use std::collections::HashMap;
 use std::env;
-use std::io::{BufRead, BufReader, Write};
-use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread;
 
 use anyhow::Result;
+use serde_json::json;
 use signal_hook::consts::TERM_SIGNALS;
 use signal_hook::flag;
 use signal_hook::iterator::Signals;
+use warp::Filter;
 
 use toy_db::buffer::BufferPoolManager;
 use toy_db::catalog::Catalog;
@@ -20,10 +21,11 @@ use toy_db::execution::{CreateTableExecutor, Executor, InsertExecutor, SelectExe
 use toy_db::parser::token;
 use toy_db::parser::{Parser, Stmt};
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let args = env::args().collect::<Vec<String>>();
     if &*args[1] == "cli" {
-        Cli::new().start()?;
+        Cli::new().start().await?;
         return Ok(());
     }
     let disk_manager = Arc::new(DiskManager::new("data/".to_string()));
@@ -40,7 +42,6 @@ fn main() -> Result<()> {
         }
         _ => panic!("unknown subcomand"),
     }
-    let listner = TcpListener::bind("127.0.0.1:3305")?;
 
     // Make sure double CTRL+C and similar kills
     let term_now = Arc::new(AtomicBool::new(false));
@@ -68,34 +69,25 @@ fn main() -> Result<()> {
         }
     });
 
-    for streams in listner.incoming() {
-        match streams {
-            Err(e) => {
-                eprintln!("Error: {:?}", e)
-            }
-            Ok(stream) => {
-                let catalog_clone = catalog.clone();
-                let buffer_pool_manager_clone = buffer_pool_manager.clone();
-                thread::spawn(move || {
-                    handle(stream, catalog_clone, buffer_pool_manager_clone)
-                        .unwrap_or_else(|e| eprintln!("Error: {:?}", e))
-                });
-            }
-        }
-    }
+    let routes = warp::post()
+        .and(warp::body::json())
+        .map(move |body: HashMap<String, String>| {
+            let catalog_clone = catalog.clone();
+            let buffer_pool_manager_clone = buffer_pool_manager.clone();
+            handle(body, catalog_clone, buffer_pool_manager_clone)
+                .unwrap_or_else(|e| format!("Error: {:?}", e))
+        });
+    warp::serve(routes).run(([127, 0, 0, 1], 3305)).await;
     Ok(())
 }
 
 fn handle(
-    mut stream: TcpStream,
+    body: HashMap<String, String>,
     catalog: Arc<Catalog>,
     buffer_pool_manager: Arc<BufferPoolManager>,
-) -> Result<()> {
-    let mut buf = String::new();
-    let mut reader = BufReader::new(&stream);
-    // not support multi lines query.
-    reader.read_line(&mut buf)?;
-    let tokens = token::tokenize(&mut buf.chars().peekable())?;
+) -> Result<String> {
+    let query = body.get("query").unwrap();
+    let tokens = token::tokenize(&mut query.chars().peekable())?;
     let mut parser = Parser::new(tokens);
     let stmt = parser.parse()?;
 
@@ -114,7 +106,8 @@ fn handle(
         }
         .execute()?,
     };
-    stream.write_all(result.as_bytes())?;
-    stream.flush()?;
-    Ok(())
+    let resp = json!({
+        "result": result,
+    });
+    Ok(resp.to_string())
 }

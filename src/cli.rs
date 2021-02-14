@@ -1,9 +1,8 @@
 use std::io;
-use std::io::{Read, Write};
-use std::net::TcpStream;
-use std::str;
+use std::io::Write;
 
 use anyhow::Result;
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash, Default)]
 pub struct Cli {}
@@ -12,7 +11,7 @@ impl Cli {
     pub fn new() -> Self {
         Cli {}
     }
-    pub fn start(&mut self) -> Result<()> {
+    pub async fn start(&mut self) -> Result<()> {
         loop {
             print!(">> ");
             io::stdout().flush()?;
@@ -22,13 +21,24 @@ impl Cli {
             if query.trim() == "quit" {
                 break;
             }
-            let mut stream = TcpStream::connect("127.0.0.1:3305")?;
-            stream.write_all(query.as_bytes())?;
-            // 4096 bytes limit
-            let mut buffer = [0u8; 4096];
-            let size = stream.read(&mut buffer)?;
-            print!("{}", str::from_utf8(&buffer[0..size])?);
-            io::stdout().flush()?;
+            let client = reqwest::Client::new();
+            let body = json!({
+                "query": query.trim(),
+            });
+            let resp = client
+                .post("http://127.0.0.1:3305/")
+                .body(body.to_string())
+                .send()
+                .await?
+                .text()
+                .await?;
+            let v: Value = serde_json::from_str(&resp)?;
+            if let Value::String(s) = &v["result"] {
+                for l in s.split('\n') {
+                    println!("{}", l.trim());
+                }
+                io::stdout().flush()?;
+            }
         }
         Ok(())
     }
