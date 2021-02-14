@@ -17,3 +17,14 @@ ToyDb is my own RDBMS written in Rust. It's inspired by CMU Database Systems cou
 - [ ] Aggergation
 - [ ] Join
 - [ ] Logging
+
+## Getting Started
+
+```sh
+# server
+cargo run init
+cargo run start
+
+# cli
+cargo run cli
+```
